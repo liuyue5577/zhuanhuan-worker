@@ -13,29 +13,36 @@ function getApp(env) {
 
 export default {
     fetch(request, env, ctx) {
-        // --- 🛡️ 隐形密码门卫逻辑 (Cookie版) ---
+        // --- 🛡️ 智能安保系统 (Cookie + 短链白名单) ---
         const secretToken = env.TOKEN || env.PASSWORD;
 
         if (secretToken) {
             const url = new URL(request.url);
             
-            // 1. 尝试从网址获取 token (兼容旧方式，比如在 Clash 软件里填订阅链接时需要这个)
+            // 1. 获取 URL 里的 token
             const urlToken = url.searchParams.get("token");
             
-            // 2. 尝试从浏览器 Cookie 获取 token (这是为了隐藏网址密码)
+            // 2. 获取 Cookie 里的 token
             const cookieHeader = request.headers.get("Cookie") || "";
-            // 简单检查 Cookie 中是否包含 "auth_token=你的密码"
             const hasCookieToken = cookieHeader.includes(`auth_token=${secretToken}`);
 
-            // 3. 校验：如果网址没带密码，且 Cookie 里也没存密码，且不是静态资源 -> 拦截
-            if (urlToken !== secretToken && !hasCookieToken && !url.pathname.startsWith("/assets")) {
+            // 3. 关键判断：
+            // 如果 (密码不对) 且 (Cookie里没密码) 且 (不是静态资源) 且 (不是短链接/s/)
+            // 只有同时满足这些，才拦截！
+            // 👇 我在这里加了 !url.pathname.startsWith("/s/")，给短链接开了绿灯
+            if (urlToken !== secretToken && 
+                !hasCookieToken && 
+                !url.pathname.startsWith("/assets") && 
+                !url.pathname.startsWith("/s/")) {
+                
+                // 返回漂亮的登录界面
                 const html = `
                 <!DOCTYPE html>
                 <html lang="zh-CN">
                 <head>
                     <meta charset="UTF-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>🔒 安全访问</title>
+                    <title>🔒 身份验证</title>
                     <style>
                         body {
                             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -69,13 +76,13 @@ export default {
                 </head>
                 <body>
                     <div class="card">
-                        <h2>🔒 身份验证</h2>
-                        <p>请输入密码以继续</p>
+                        <h2>🔒 私有服务</h2>
+                        <p>请登录以生成订阅链接</p>
                         <div class="input-group">
                             <input type="password" id="passwordInput" placeholder="输入密码..." autofocus>
                             <span class="toggle-eye" onclick="toggleVisibility()">👁️</span>
                         </div>
-                        <button onclick="submitPass()">验证并记住我</button>
+                        <button onclick="submitPass()">登录</button>
                     </div>
                     <script>
                         function toggleVisibility() {
@@ -87,20 +94,14 @@ export default {
                                 input.type = "password"; eye.textContent = "👁️";
                             }
                         }
-
                         function submitPass() {
                             const pass = document.getElementById('passwordInput').value;
                             if(!pass) return;
-                            
-                            // 关键修改：不再修改网址，而是存入 Cookie (有效期30天)
                             const date = new Date();
                             date.setTime(date.getTime() + (30*24*60*60*1000));
                             document.cookie = "auth_token=" + pass + "; expires=" + date.toUTCString() + "; path=/";
-                            
-                            // 刷新页面，此时有了 Cookie 就会自动进入
                             location.reload();
                         }
-                        
                         document.getElementById('passwordInput').addEventListener("keypress", function(event) {
                             if (event.key === "Enter") submitPass();
                         });
