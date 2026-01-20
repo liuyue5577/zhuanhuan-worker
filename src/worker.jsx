@@ -13,7 +13,7 @@ function getApp(env) {
 
 export default {
     async fetch(request, env, ctx) {
-        // --- 🛡️ 智能安保系统 (全家桶白名单版) ---
+        // --- 🛡️ 智能安保系统 (全客户端白名单版) ---
         const secretToken = env.TOKEN || env.PASSWORD;
         const url = new URL(request.url);
         const userToken = url.searchParams.get("token");
@@ -21,13 +21,13 @@ export default {
         // 1. 获取客户端“名字” (User-Agent)
         const userAgent = request.headers.get("User-Agent") || "";
         
-        // 2. 定义 VIP 客户端列表 (大满贯)
+        // 2. 定义 VIP 客户端列表 (包含 PC 端的 v2rayN)
         // 解释：
-        // Clash -> 涵盖 OpenClash, Clash Verge 等
-        // Go-http-client -> 涵盖 v2rayNG, Sing-box 等很多基于 Go 语言开发的内核
-        // Shadowrocket -> 小火箭
-        // Karing, NekoBox, Hiddify -> 常用新客户端
-        const isVipClient = /(Clash|Shadowrocket|Quantumult|Stash|Go-http-client|v2rayNG|Karing|NekoBox|Sing-Box|Hiddify|Surge)/i.test(userAgent);
+        // Clash -> 涵盖 OpenClash, Clash Verge, ClashX 等
+        // v2rayN -> 涵盖 Windows 版 v2rayN
+        // v2rayNG -> 涵盖 Android 版
+        // Go-http-client -> 涵盖所有基于 Go 内核的客户端
+        const isVipClient = /(Clash|Shadowrocket|Quantumult|Stash|Go-http-client|v2rayN|v2rayNG|Karing|NekoBox|Sing-Box|Hiddify|Surge|Loon)/i.test(userAgent);
 
         // 3. Cookie 检查 (给浏览器用的)
         const cookieHeader = request.headers.get("Cookie") || "";
@@ -35,7 +35,6 @@ export default {
 
         // 4. 拦截判断
         // 规则：(有密码) 且 (不是VIP软件) 且 (没带密码) 且 (浏览器没Cookie) 且 (不是静态资源)
-        // 👇 只要匹配到上面的软件名，isVipClient 就是 true，直接放行
         if (secretToken && !isVipClient && userToken !== secretToken && !hasCookieToken && !url.pathname.startsWith("/assets")) {
             
             return new Response(`
