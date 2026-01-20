@@ -96,3 +96,28 @@ export default {
                             const date = new Date();
                             date.setTime(date.getTime() + (30*24*60*60*1000));
                             document.cookie = "auth_token=" + pass + "; expires=" + date.toUTCString() + "; path=/";
+                            
+                            // 刷新页面，此时有了 Cookie 就会自动进入
+                            location.reload();
+                        }
+                        
+                        document.getElementById('passwordInput').addEventListener("keypress", function(event) {
+                            if (event.key === "Enter") submitPass();
+                        });
+                    </script>
+                </body>
+                </html>
+                `;
+
+                return new Response(html, { 
+                    status: 200, 
+                    headers: { "Content-Type": "text/html;charset=UTF-8" } 
+                });
+            }
+        }
+        // --- 🛡️ 结束 ---
+
+        const app = getApp(env);
+        return app.fetch(request, env, ctx);
+    }
+};
