@@ -12,113 +12,58 @@ function getApp(env) {
 }
 
 export default {
-    fetch(request, env, ctx) {
-        // --- 🛡️ 智能安保系统 (Cookie + 短链白名单) ---
+    async fetch(request, env, ctx) {
+        // --- 🛡️ 智能安保系统 (短链自动授权版) ---
         const secretToken = env.TOKEN || env.PASSWORD;
+        const url = new URL(request.url);
+        const userToken = url.searchParams.get("token");
 
-        if (secretToken) {
-            const url = new URL(request.url);
+        // 1. Cookie 检查 (网页访问免密)
+        const cookieHeader = request.headers.get("Cookie") || "";
+        const hasCookieToken = cookieHeader.includes(`auth_token=${secretToken}`);
+
+        // 2. 拦截判断
+        // 规则：(有密码设置) 且 (URL没带密码) 且 (Cookie没密码) 且 (不是静态资源) 且 (不是短链接) -> 拦截
+        // 👇 关键点：!url.pathname.startsWith("/s/") 表示如果是短链接，直接放行，不弹密码框
+        if (secretToken && userToken !== secretToken && !hasCookieToken && 
+            !url.pathname.startsWith("/assets") && 
+            !url.pathname.startsWith("/s/")) {
             
-            // 1. 获取 URL 里的 token
-            const urlToken = url.searchParams.get("token");
-            
-            // 2. 获取 Cookie 里的 token
-            const cookieHeader = request.headers.get("Cookie") || "";
-            const hasCookieToken = cookieHeader.includes(`auth_token=${secretToken}`);
-
-            // 3. 关键判断：
-            // 如果 (密码不对) 且 (Cookie里没密码) 且 (不是静态资源) 且 (不是短链接/s/)
-            // 只有同时满足这些，才拦截！
-            // 👇 我在这里加了 !url.pathname.startsWith("/s/")，给短链接开了绿灯
-            if (urlToken !== secretToken && 
-                !hasCookieToken && 
-                !url.pathname.startsWith("/assets") && 
-                !url.pathname.startsWith("/s/")) {
-                
-                // 返回漂亮的登录界面
-                const html = `
-                <!DOCTYPE html>
-                <html lang="zh-CN">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>🔒 身份验证</title>
-                    <style>
-                        body {
-                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                            display: flex; justify-content: center; align-items: center;
-                            height: 100vh; margin: 0; background-color: #f0f2f5;
-                        }
-                        .card {
-                            background: white; padding: 2.5rem; border-radius: 16px;
-                            box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; width: 100%; max-width: 360px;
-                        }
-                        h2 { margin: 0 0 10px; color: #1a1a1a; font-size: 1.6rem; }
-                        p { color: #666; margin-bottom: 2rem; font-size: 0.95rem; }
-                        .input-group { position: relative; margin-bottom: 1.5rem; }
-                        input {
-                            width: 100%; padding: 14px 45px 14px 14px;
-                            border: 1px solid #e1e4e8; border-radius: 10px; box-sizing: border-box;
-                            font-size: 1rem; outline: none; transition: all 0.2s; background: #fafafa;
-                        }
-                        input:focus { border-color: #0070f3; background: #fff; }
-                        .toggle-eye {
-                            position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
-                            cursor: pointer; font-size: 1.2rem; user-select: none; opacity: 0.5;
-                        }
-                        button {
-                            width: 100%; padding: 14px; background-color: #0070f3;
-                            color: white; border: none; border-radius: 10px;
-                            font-size: 1rem; cursor: pointer; font-weight: 600; transition: background 0.2s;
-                        }
-                        button:hover { background-color: #0051a2; }
-                    </style>
-                </head>
-                <body>
-                    <div class="card">
-                        <h2>🔒 私有服务</h2>
-                        <p>请登录以生成订阅链接</p>
-                        <div class="input-group">
-                            <input type="password" id="passwordInput" placeholder="输入密码..." autofocus>
-                            <span class="toggle-eye" onclick="toggleVisibility()">👁️</span>
-                        </div>
-                        <button onclick="submitPass()">登录</button>
-                    </div>
-                    <script>
-                        function toggleVisibility() {
-                            const input = document.getElementById('passwordInput');
-                            const eye = document.querySelector('.toggle-eye');
-                            if (input.type === "password") {
-                                input.type = "text"; eye.textContent = "🙈";
-                            } else {
-                                input.type = "password"; eye.textContent = "👁️";
-                            }
-                        }
-                        function submitPass() {
-                            const pass = document.getElementById('passwordInput').value;
-                            if(!pass) return;
-                            const date = new Date();
-                            date.setTime(date.getTime() + (30*24*60*60*1000));
-                            document.cookie = "auth_token=" + pass + "; expires=" + date.toUTCString() + "; path=/";
-                            location.reload();
-                        }
-                        document.getElementById('passwordInput').addEventListener("keypress", function(event) {
-                            if (event.key === "Enter") submitPass();
-                        });
-                    </script>
-                </body>
-                </html>
-                `;
-
-                return new Response(html, { 
-                    status: 200, 
-                    headers: { "Content-Type": "text/html;charset=UTF-8" } 
-                });
-            }
+            return new Response(`
+            <!DOCTYPE html>
+            <html lang="zh-CN">
+            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>🔒 访问受限</title>
+            <style>body{font-family:system-ui,-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f0f2f5}.card{background:white;padding:2rem;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;width:300px}input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:6px}button{width:100%;padding:10px;background:#0070f3;color:white;border:none;border-radius:6px;cursor:pointer}</style></head>
+            <body><div class="card"><h3>🔒 私有服务</h3><p>请输入密码</p><input type="password" id="pass" onkeydown="if(event.key==='Enter')sub()"><button onclick="sub()">进入</button></div>
+            <script>function sub(){var p=document.getElementById('pass').value;if(p){var d=new Date();d.setTime(d.getTime()+(30*864e5));document.cookie="auth_token="+p+"; expires="+d.toUTCString()+"; path=/";location.reload();}}</script>
+            </body></html>`, { status: 200, headers: { "Content-Type": "text/html;charset=UTF-8" } });
         }
-        // --- 🛡️ 结束 ---
 
         const app = getApp(env);
-        return app.fetch(request, env, ctx);
+        // 执行原始请求
+        let response = await app.fetch(request, env, ctx);
+
+        // --- 🔀 自动注入密码 (Magic!) ---
+        // 如果系统要跳转 (302) 且 (是短链接访问 OR 用户带了密码)
+        if (secretToken && (response.status === 302 || response.status === 301)) {
+            // 👇 只要是短链接访问，系统就自动帮你把密码加上去！
+            if (url.pathname.startsWith("/s/") || userToken === secretToken) {
+                const location = response.headers.get("Location");
+                if (location) {
+                    try {
+                        const newLocationUrl = new URL(location, request.url);
+                        // 强制注入 Token，让 OpenClash 的下一步请求能通过
+                        newLocationUrl.searchParams.set("token", secretToken);
+                        
+                        response = new Response(response.body, response);
+                        response.headers.set("Location", newLocationUrl.toString());
+                        return response;
+                    } catch (e) {}
+                }
+            }
+        }
+        // --- 🔀 结束 ---
+
+        return response;
     }
 };
