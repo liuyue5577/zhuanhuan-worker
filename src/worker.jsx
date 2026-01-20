@@ -13,65 +13,45 @@ function getApp(env) {
 
 export default {
     async fetch(request, env, ctx) {
-        // --- 🛡️ 全能门卫系统 (最终增强版) ---
+        // --- 🛡️ 智能安保系统 (全家桶白名单版) ---
         const secretToken = env.TOKEN || env.PASSWORD;
         const url = new URL(request.url);
         const userToken = url.searchParams.get("token");
 
-        // 1. Cookie 检查
+        // 1. 获取客户端“名字” (User-Agent)
+        const userAgent = request.headers.get("User-Agent") || "";
+        
+        // 2. 定义 VIP 客户端列表 (大满贯)
+        // 解释：
+        // Clash -> 涵盖 OpenClash, Clash Verge 等
+        // Go-http-client -> 涵盖 v2rayNG, Sing-box 等很多基于 Go 语言开发的内核
+        // Shadowrocket -> 小火箭
+        // Karing, NekoBox, Hiddify -> 常用新客户端
+        const isVipClient = /(Clash|Shadowrocket|Quantumult|Stash|Go-http-client|v2rayNG|Karing|NekoBox|Sing-Box|Hiddify|Surge)/i.test(userAgent);
+
+        // 3. Cookie 检查 (给浏览器用的)
         const cookieHeader = request.headers.get("Cookie") || "";
         const hasCookieToken = cookieHeader.includes(`auth_token=${secretToken}`);
 
-        // 2. 拦截逻辑
-        // 规则：有密码 && URL没带密码 && Cookie没密码 && 不是静态资源 && 不是短链接(/s/)
-        // 👇 重点：/s/ 开头的短链接直接放行，不拦截！
-        if (secretToken && userToken !== secretToken && !hasCookieToken && 
-            !url.pathname.startsWith("/assets") && 
-            !url.pathname.startsWith("/s/")) {
+        // 4. 拦截判断
+        // 规则：(有密码) 且 (不是VIP软件) 且 (没带密码) 且 (浏览器没Cookie) 且 (不是静态资源)
+        // 👇 只要匹配到上面的软件名，isVipClient 就是 true，直接放行
+        if (secretToken && !isVipClient && userToken !== secretToken && !hasCookieToken && !url.pathname.startsWith("/assets")) {
             
             return new Response(`
             <!DOCTYPE html>
             <html lang="zh-CN">
-            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>🔒 访问受限</title>
+            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>🔒 私有服务</title>
             <style>body{font-family:system-ui,-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f0f2f5}.card{background:white;padding:2rem;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;width:300px}input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:6px}button{width:100%;padding:10px;background:#0070f3;color:white;border:none;border-radius:6px;cursor:pointer}</style></head>
-            <body><div class="card"><h3>🔒 私有服务</h3><p>请输入密码</p><input type="password" id="pass" onkeydown="if(event.key==='Enter')sub()"><button onclick="sub()">进入</button></div>
+            <body><div class="card"><h3>🔒 访问受限</h3><p>请输入密码以继续</p><input type="password" id="pass" onkeydown="if(event.key==='Enter')sub()"><button onclick="sub()">验证</button></div>
             <script>function sub(){var p=document.getElementById('pass').value;if(p){var d=new Date();d.setTime(d.getTime()+(30*864e5));document.cookie="auth_token="+p+"; expires="+d.toUTCString()+"; path=/";location.reload();}}</script>
             </body></html>`, { 
                 status: 200, 
-                // 👇 加上这个头，禁止浏览器缓存这个登录页，防止“鬼打墙”
-                headers: { 
-                    "Content-Type": "text/html;charset=UTF-8",
-                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
-                } 
+                headers: { "Content-Type": "text/html;charset=UTF-8" } 
             });
         }
 
         const app = getApp(env);
-        // 执行请求
-        let response = await app.fetch(request, env, ctx);
-
-        // --- 🔀 自动注入密码 (支持 301/302/307/308) ---
-        const status = response.status;
-        // 只要是跳转状态码，我们就尝试注入密码
-        if (secretToken && (status === 301 || status === 302 || status === 303 || status === 307 || status === 308)) {
-            // 只要是短链接访问，或者用户本身带着密码，就传递下去
-            if (url.pathname.startsWith("/s/") || userToken === secretToken) {
-                const location = response.headers.get("Location");
-                if (location) {
-                    try {
-                        const newLocationUrl = new URL(location, request.url);
-                        // 强制把密码贴到下一站的 URL 里
-                        newLocationUrl.searchParams.set("token", secretToken);
-                        
-                        response = new Response(response.body, response);
-                        response.headers.set("Location", newLocationUrl.toString());
-                        return response;
-                    } catch (e) {}
-                }
-            }
-        }
-        // --- 🔀 结束 ---
-
-        return response;
+        return app.fetch(request, env, ctx);
     }
 };
