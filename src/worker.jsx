@@ -19,17 +19,25 @@ export default {
         const userToken = url.searchParams.get("token");
         const userAgent = request.headers.get("User-Agent") || "";
 
-        // 1. 识别 VIP 客户端 (Clash/v2ray/小火箭等直接放行)
-        const isVipClient = /(Clash|Shadowrocket|Quantumult|Stash|Go-http-client|v2rayN|v2rayNG|Karing|NekoBox|Sing-Box|Hiddify|Surge|Loon|Mihomo|Metacubex)/i.test(userAgent);
+        // ✨ 魔法 1：强制给 Clash 链接开启 Meta 模式 (让它吐出 Hysteria2 节点)
+        // 只要你用 /c/ 开头的链接，后台自动加 ver=meta 参数
+        if (url.pathname.startsWith("/c/")) {
+            url.searchParams.set("ver", "meta");
+            // 重新构建请求，把这个“作弊”后的 URL 塞回去
+            request = new Request(url.toString(), request);
+        }
 
-        // 2. 识别短链接格式 (允许 /s/ /c/ /x/ /b/ 开头的路径)
+        // 1. 识别 VIP 客户端 (直接放行)
+        const isVipClient = /(Clash|Shadowrocket|Quantumult|Stash|Go-http-client|v2rayN|v2rayNG|Karing|NekoBox|Sing-Box|Hiddify|Surge|Loon|Mihomo|Metacubex|FlClash)/i.test(userAgent);
+
+        // 2. 识别短链接格式
         const isShortLink = /^\/(s|c|x|b)\//.test(url.pathname);
 
         // 3. Cookie 检查
         const cookieHeader = request.headers.get("Cookie") || "";
         const hasCookieToken = cookieHeader.includes(`auth_token=${secretToken}`);
 
-        // --- 🔒 拦截逻辑 ---
+        // --- 🔒 密码拦截界面 (带小眼睛) ---
         if (secretToken && 
             userToken !== secretToken && 
             !isVipClient && 
@@ -37,7 +45,6 @@ export default {
             !url.pathname.startsWith("/assets") && 
             !isShortLink) {
             
-            // 👇 这里才是带小眼睛开关的升级版页面
             return new Response(`
             <!DOCTYPE html>
             <html lang="zh-CN">
@@ -49,7 +56,6 @@ export default {
                 .card{background:white;padding:2rem;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);text-align:center;width:300px}
                 .input-group{position:relative;margin:15px 0}
                 input{width:100%;padding:12px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:16px}
-                /* 小眼睛的样式 */
                 .eye-icon{position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;opacity:0.6;user-select:none}
                 .eye-icon:hover{opacity:1}
                 button{width:100%;padding:12px;background:#0070f3;color:white;border:none;border-radius:6px;cursor:pointer;font-size:16px;font-weight:bold}
@@ -60,30 +66,21 @@ export default {
                 <div class="card">
                     <h3>🔒 访问受限</h3>
                     <p style="color:#666;font-size:14px">请输入密码以继续</p>
-                    
                     <div class="input-group">
                         <input type="password" id="pass" placeholder="输入密码..." onkeydown="if(event.key==='Enter')sub()">
                         <span class="eye-icon" onclick="togglePass()">👁️</span>
                     </div>
-
                     <button onclick="sub()">验 证</button>
                 </div>
                 <script>
-                    // 切换密码显示/隐藏的逻辑
                     function togglePass() {
                         var x = document.getElementById("pass");
-                        if (x.type === "password") {
-                            x.type = "text";
-                        } else {
-                            x.type = "password";
-                        }
+                        x.type = x.type === "password" ? "text" : "password";
                     }
-                    // 提交密码
                     function sub(){
                         var p=document.getElementById('pass').value;
                         if(p){
-                            var d=new Date();
-                            d.setTime(d.getTime()+(30*864e5)); // 记住30天
+                            var d=new Date(); d.setTime(d.getTime()+(30*864e5));
                             document.cookie="auth_token="+p+"; expires="+d.toUTCString()+"; path=/";
                             location.reload();
                         }
@@ -96,7 +93,7 @@ export default {
         const app = getApp(env);
         let response = await app.fetch(request, env, ctx);
 
-        // --- 🔀 自动注入密码逻辑 ---
+        // --- 🔀 自动注入 Token 到跳转链接 ---
         if (secretToken && (response.status >= 300 && response.status < 400)) {
             if (isShortLink || userToken === secretToken) {
                 const location = response.headers.get("Location");
@@ -111,7 +108,6 @@ export default {
                 }
             }
         }
-
         return response;
     }
 };
